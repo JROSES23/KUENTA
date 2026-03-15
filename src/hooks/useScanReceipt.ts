@@ -21,6 +21,19 @@ export function useScanReceipt() {
   const [error, setError] = useState<Error | null>(null)
   const { canScanReceipt } = usePlan()
 
+  function fileToBase64(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => {
+        const result = reader.result as string
+        // Strip the data:image/...;base64, prefix
+        resolve(result.split(',')[1])
+      }
+      reader.onerror = reject
+      reader.readAsDataURL(file)
+    })
+  }
+
   async function scanReceipt(imageFile: File): Promise<ScanResult> {
     if (!canScanReceipt(0)) {
       throw new Error('Has alcanzado el limite de scans de tu plan. Actualiza a Premium.')
@@ -30,11 +43,10 @@ export function useScanReceipt() {
     setError(null)
 
     try {
-      const formData = new FormData()
-      formData.append('image', imageFile)
+      const image = await fileToBase64(imageFile)
 
       const { data, error } = await supabase.functions.invoke('scan-receipt', {
-        body: formData,
+        body: { image, mimeType: imageFile.type || 'image/jpeg' },
       })
 
       if (error) throw new Error(error.message)

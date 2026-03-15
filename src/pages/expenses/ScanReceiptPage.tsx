@@ -1,12 +1,14 @@
 import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronLeft, Camera, Upload, Trash2 } from 'lucide-react'
+import { ChevronLeft, Camera, Upload, Trash2, Plus, Pencil, X, Check } from 'lucide-react'
 import { Button } from '../../components/ui/Button'
 import { Spinner } from '../../components/ui/Spinner'
 import { useScanReceipt } from '../../hooks/useScanReceipt'
 import type { ScanResult } from '../../hooks/useScanReceipt'
+import { Input } from '../../components/ui/Input'
 import { formatCLP } from '../../utils/formatCLP'
 import { ROUTES } from '../../constants/routes'
+import type { ScannedItem } from '../../hooks/useScanReceipt'
 
 export default function ScanReceiptPage() {
   const navigate = useNavigate()
@@ -14,6 +16,9 @@ export default function ScanReceiptPage() {
   const fileRef = useRef<HTMLInputElement>(null)
   const [result, setResult] = useState<ScanResult | null>(null)
   const [error, setError] = useState('')
+  const [editingIdx, setEditingIdx] = useState<number | null>(null)
+  const [editItem, setEditItem] = useState<ScannedItem>({ name: '', quantity: 1, unit_price: 0, total_price: 0 })
+  const [addingNew, setAddingNew] = useState(false)
 
   async function handleFile(file: File) {
     setError('')
@@ -28,6 +33,43 @@ export default function ScanReceiptPage() {
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (file) handleFile(file)
+  }
+
+  function recalcTotal(items: ScannedItem[]): number {
+    return items.reduce((sum, it) => sum + it.total_price, 0)
+  }
+
+  function startEdit(idx: number) {
+    if (!result) return
+    setEditingIdx(idx)
+    setEditItem({ ...result.items[idx] })
+  }
+
+  function saveEdit() {
+    if (!result || editingIdx === null) return
+    const items = [...result.items]
+    items[editingIdx] = { ...editItem, total_price: editItem.quantity * editItem.unit_price }
+    setResult({ ...result, items, total: recalcTotal(items) })
+    setEditingIdx(null)
+  }
+
+  function deleteItem(idx: number) {
+    if (!result) return
+    const items = result.items.filter((_, i) => i !== idx)
+    setResult({ ...result, items, total: recalcTotal(items) })
+  }
+
+  function startAddNew() {
+    setEditItem({ name: '', quantity: 1, unit_price: 0, total_price: 0 })
+    setAddingNew(true)
+  }
+
+  function saveNewItem() {
+    if (!result || !editItem.name.trim()) return
+    const newItem = { ...editItem, total_price: editItem.quantity * editItem.unit_price }
+    const items = [...result.items, newItem]
+    setResult({ ...result, items, total: recalcTotal(items) })
+    setAddingNew(false)
   }
 
   function handleUseForSplit() {
@@ -114,24 +156,112 @@ export default function ScanReceiptPage() {
 
             {/* Items */}
             <div className="mb-4">
-              <p className="font-ui text-caption uppercase text-[var(--text-3)] tracking-[0.8px] mb-2">
-                Items detectados ({result.items.length})
-              </p>
+              <div className="flex items-center justify-between mb-2">
+                <p className="font-ui text-caption uppercase text-[var(--text-3)] tracking-[0.8px]">
+                  Items ({result.items.length})
+                </p>
+                <button
+                  onClick={startAddNew}
+                  className="flex items-center gap-1 font-ui text-body-sm text-[var(--purple-text)]"
+                >
+                  <Plus size={14} strokeWidth={2.5} />
+                  Agregar item
+                </button>
+              </div>
+
               {result.items.map((item, i) => (
-                <div key={i} className="flex items-center gap-3 py-3 border-b border-[var(--border)] last:border-0">
-                  <div className="flex-1 min-w-0">
-                    <p className="font-ui text-body text-[var(--text)] truncate">{item.name}</p>
-                    {item.quantity > 1 && (
-                      <p className="font-ui text-micro text-[var(--text-3)]">
-                        {item.quantity}x {formatCLP(item.unit_price)}
-                      </p>
-                    )}
+                editingIdx === i ? (
+                  /* Editing inline */
+                  <div key={i} className="py-3 border-b border-[var(--border)] flex flex-col gap-2">
+                    <Input
+                      placeholder="Nombre"
+                      value={editItem.name}
+                      onChange={e => setEditItem(prev => ({ ...prev, name: e.target.value }))}
+                      autoFocus
+                    />
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="Cant."
+                        type="number"
+                        inputMode="numeric"
+                        value={editItem.quantity}
+                        onChange={e => setEditItem(prev => ({ ...prev, quantity: parseInt(e.target.value) || 1 }))}
+                      />
+                      <Input
+                        placeholder="Precio unit."
+                        type="number"
+                        inputMode="numeric"
+                        value={editItem.unit_price}
+                        onChange={e => setEditItem(prev => ({ ...prev, unit_price: parseInt(e.target.value) || 0 }))}
+                      />
+                    </div>
+                    <div className="flex gap-2 justify-end">
+                      <button onClick={() => setEditingIdx(null)} className="p-2 rounded-full bg-[var(--surface)]">
+                        <X size={16} className="text-[var(--text-3)]" />
+                      </button>
+                      <button onClick={saveEdit} className="p-2 rounded-full bg-[var(--purple-bg)]">
+                        <Check size={16} className="text-[var(--purple-text)]" />
+                      </button>
+                    </div>
                   </div>
-                  <span className="font-ui text-title text-[var(--text)] flex-shrink-0">
-                    {formatCLP(item.total_price)}
-                  </span>
-                </div>
+                ) : (
+                  <div key={i} className="flex items-center gap-2 py-3 border-b border-[var(--border)] last:border-0">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-ui text-body text-[var(--text)] truncate">{item.name}</p>
+                      {item.quantity > 1 && (
+                        <p className="font-ui text-micro text-[var(--text-3)]">
+                          {item.quantity}x {formatCLP(item.unit_price)}
+                        </p>
+                      )}
+                    </div>
+                    <span className="font-ui text-title text-[var(--text)] flex-shrink-0">
+                      {formatCLP(item.total_price)}
+                    </span>
+                    <button onClick={() => startEdit(i)} className="p-1.5 rounded-full hover:bg-[var(--surface)]">
+                      <Pencil size={14} className="text-[var(--text-3)]" />
+                    </button>
+                    <button onClick={() => deleteItem(i)} className="p-1.5 rounded-full hover:bg-[var(--surface)]">
+                      <Trash2 size={14} className="text-[var(--red)]" />
+                    </button>
+                  </div>
+                )
               ))}
+
+              {/* Add new item inline */}
+              {addingNew && (
+                <div className="py-3 border-b border-[var(--border)] flex flex-col gap-2">
+                  <Input
+                    placeholder="Nombre del item"
+                    value={editItem.name}
+                    onChange={e => setEditItem(prev => ({ ...prev, name: e.target.value }))}
+                    autoFocus
+                  />
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Cant."
+                      type="number"
+                      inputMode="numeric"
+                      value={editItem.quantity}
+                      onChange={e => setEditItem(prev => ({ ...prev, quantity: parseInt(e.target.value) || 1 }))}
+                    />
+                    <Input
+                      placeholder="Precio unit."
+                      type="number"
+                      inputMode="numeric"
+                      value={editItem.unit_price}
+                      onChange={e => setEditItem(prev => ({ ...prev, unit_price: parseInt(e.target.value) || 0 }))}
+                    />
+                  </div>
+                  <div className="flex gap-2 justify-end">
+                    <button onClick={() => setAddingNew(false)} className="p-2 rounded-full bg-[var(--surface)]">
+                      <X size={16} className="text-[var(--text-3)]" />
+                    </button>
+                    <button onClick={saveNewItem} className="p-2 rounded-full bg-[var(--purple-bg)]">
+                      <Check size={16} className="text-[var(--purple-text)]" />
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Total */}

@@ -1,80 +1,25 @@
-import { handleCors } from '../_shared/cors.ts'
-import { requireAuth, getServiceClient } from '../_shared/auth.ts'
-import { errorResponse, successResponse } from '../_shared/errors.ts'
-import { checkScanLimit, recordUsage } from '../_shared/plans.ts'
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
-interface ReceiptItem {
-  name: string
-  quantity: number
-  unit_price: number
-  total_price: number
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-interface ScanResult {
-  store: string
-  date: string | null
-  total: number
-  items: ReceiptItem[]
-}
-
-Deno.serve(async (req) => {
-  const corsResponse = handleCors(req)
-  if (corsResponse) return corsResponse
+serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders })
+  }
 
   try {
-    // 1. Validate API key exists
     const apiKey = Deno.env.get('GEMINI_API_KEY')
-    if (!apiKey) {
-      console.error('GEMINI_API_KEY not set')
-      return errorResponse('Configuracion del servidor incompleta', 500)
-    }
+    if (!apiKey) throw new Error('Missing GEMINI_API_KEY')
 
-    const { user } = await requireAuth(req)
-    const serviceClient = getServiceClient()
+    const body = await req.json()
+    const { image, mimeType = 'image/jpeg' } = body
+    if (!image) throw new Error('Missing image data')
 
-    // Plan check — non-blocking if plan_usage table doesn't exist yet
-    try {
-      const canScan = await checkScanLimit(user.id, serviceClient)
-      if (!canScan) {
-        return errorResponse('Limite de scans del plan gratuito alcanzado', 403)
-      }
-    } catch (e) {
-      console.warn('checkScanLimit failed (table may not exist):', (e as Error).message)
-    }
-
-    const formData = await req.formData()
-    const imageFile = formData.get('image') as File | null
-    if (!imageFile) return errorResponse('No se recibio imagen')
-
-    const arrayBuffer = await imageFile.arrayBuffer()
-    const bytes = new Uint8Array(arrayBuffer)
-
-    // 2. Safe base64 encoding — btoa(String.fromCharCode(...spread)) crashes on large arrays
-    let binary = ''
-    for (let i = 0; i < bytes.length; i++) {
-      binary += String.fromCharCode(bytes[i])
-    }
-    const base64 = btoa(binary)
-    const mimeType = imageFile.type || 'image/jpeg'
-
-    // 30s timeout
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 30000)
-
-    let geminiRes: Response
-    try {
-      geminiRes = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          signal: controller.signal,
-          body: JSON.stringify({
-            contents: [{
-              parts: [
-                {
-                  text: `Eres un extractor de datos de boletas chilenas.
-Analiza esta imagen y extrae TODOS los items.
+    const prompt = `Eres un extractor de datos de boletas chilenas.
+Analiza esta imagen y extrae TODOS los items comprados.
 Responde UNICAMENTE con JSON valido, sin texto adicional ni markdown:
 {
   "store": "nombre del local",
@@ -85,66 +30,60 @@ Responde UNICAMENTE con JSON valido, sin texto adicional ni markdown:
   ]
 }
 Reglas:
-- Montos siempre integers CLP sin puntos ni $
+- Montos siempre integers CLP sin puntos ni simbolo $
 - Incluye TODOS los items
-- Si no lees un valor usa null`
-                },
-                {
-                  inline_data: { mime_type: mimeType, data: base64 }
-                }
-              ]
-            }],
-            generationConfig: { temperature: 0.1, maxOutputTokens: 2000 }
-          })
-        }
-      )
-    } catch (err) {
-      if ((err as Error).name === 'AbortError') {
-        return errorResponse('Timeout: la IA tardo mas de 30 segundos', 504)
+- Si no puedes leer un valor usa null`
+
+    const geminiRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              { text: prompt },
+              { inline_data: { mime_type: mimeType, data: image } }
+            ]
+          }],
+          generationConfig: { temperature: 0.1, maxOutputTokens: 2048 }
+        })
       }
-      throw err
-    } finally {
-      clearTimeout(timeout)
-    }
+    )
 
     if (!geminiRes.ok) {
-      const errBody = await geminiRes.text().catch(() => '')
-      console.error('Gemini error:', geminiRes.status, errBody)
-      return errorResponse(`Error de IA (${geminiRes.status})`, 502)
+      const errText = await geminiRes.text()
+      throw new Error(`Gemini error ${geminiRes.status}: ${errText}`)
     }
 
     const geminiData = await geminiRes.json()
-    const rawText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+    const text = geminiData.candidates?.[0]?.content?.parts?.[0]?.text
+    if (!text) throw new Error('No text in Gemini response')
 
-    let result: ScanResult
-    try {
-      const cleanJson = rawText.replace(/```json?/g, '').replace(/```/g, '').trim()
-      result = JSON.parse(cleanJson)
-    } catch {
-      console.error('Gemini raw response:', rawText)
-      return errorResponse('No se pudo interpretar la respuesta de la IA')
-    }
+    const clean = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
+    const parsed = JSON.parse(clean)
 
     // Ensure all prices are integers
-    result.total = Math.round(result.total ?? 0)
-    result.items = (result.items ?? []).map(item => ({
+    parsed.total = Math.round(parsed.total ?? 0)
+    parsed.items = (parsed.items ?? []).map((item: Record<string, unknown>) => ({
       ...item,
-      quantity: Math.round(item.quantity ?? 1),
-      unit_price: Math.round(item.unit_price ?? 0),
-      total_price: Math.round(item.total_price ?? 0),
+      quantity: Math.round((item.quantity as number) ?? 1),
+      unit_price: Math.round((item.unit_price as number) ?? 0),
+      total_price: Math.round((item.total_price as number) ?? 0),
     }))
 
-    // Record usage — non-blocking if plan_usage table doesn't exist yet
-    try {
-      await recordUsage(user.id, 'scan', serviceClient)
-    } catch (e) {
-      console.warn('recordUsage failed (table may not exist):', (e as Error).message)
-    }
-
-    return successResponse(result)
+    return new Response(JSON.stringify(parsed), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    })
 
   } catch (err) {
-    console.error(err)
-    return errorResponse((err as Error).message, 500)
+    console.error('scan-receipt error:', (err as Error).message)
+    return new Response(
+      JSON.stringify({ error: (err as Error).message }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      }
+    )
   }
 })

@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm create:*)",
+      "Bash(npx --yes create-vite@latest kuenta-temp --template react-ts)",
+      "Bash(cp -r kuenta-temp/* kuenta-temp/.gitignore .)",
+      "Bash(rm -rf kuenta-temp)",
+      "Bash(npm install:*)",
+      "Bash(rm -f src/App.css src/index.css src/App.test.tsx)",
+      "Bash(rm -rf src/assets)",
+      "Bash(npx tailwindcss:*)",
+      "Bash(node -e \"const rr = require.resolve\\(''react-router-dom/package.json''\\); const pkg = require\\(rr\\); console.log\\(pkg.version\\)\")",
+      "Bash(npx tsc:*)",
+      "Bash(npx vite:*)",
+      "Bash(npx pwa-asset-generator:*)",
+      "Bash(cp manifest-icon-192.maskable.png icon-192.png)",
+      "Bash(cp manifest-icon-512.maskable.png icon-512.png)",
+      "Bash(cp apple-icon-180.png apple-touch-icon.png)",
+      "Bash(ls \"r:/Cursor/Kuenta/.env\"*)",
+      "Bash(npx supabase:*)",
+      "Bash(npm run:*)"
+    ]
+  }
+}

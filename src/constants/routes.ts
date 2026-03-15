@@ -1,0 +1,15 @@
+export const ROUTES = {
+  LOGIN: '/login',
+  OTP: '/otp',
+  PROFILE_SETUP: '/perfil/setup',
+  FEED: '/',
+  GROUPS: '/grupos',
+  GROUP_DETAIL: (id: string) => `/grupos/${id}`,
+  NEW_EXPENSE: '/gasto/nuevo',
+  SCAN_RECEIPT: '/gasto/scan',
+  DEBTS: '/deudas',
+  PAY_SUCCESS: (expenseId: string) => `/pago-ok/${expenseId}`,
+  UPGRADE: '/premium',
+  PROFILE: '/perfil',
+  SPLASH: '/splash',
+} as const

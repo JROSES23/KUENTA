@@ -1,0 +1,74 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Gradiente de fondo principal -->
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%"   stop-color="#4C44AA"/>
+      <stop offset="45%"  stop-color="#5C54BC"/>
+      <stop offset="100%" stop-color="#2E2880"/>
+    </linearGradient>
+    <!-- Brillo de vidrio premium — esquina sup izq -->
+    <radialGradient id="shine" cx="25%" cy="20%" r="55%">
+      <stop offset="0%"   stop-color="white" stop-opacity="0.13"/>
+      <stop offset="100%" stop-color="white" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Fondo -->
+  <rect width="512" height="512" rx="114" fill="url(#bg)"/>
+
+  <!-- Brillo sutil -->
+  <rect width="512" height="512" rx="114" fill="url(#shine)"/>
+
+  <!--
+    K KNOCKOUT — geometría exacta
+    ─────────────────────────────
+    stroke-width (sw)  = 60.4px  (≈11.8% de 512)
+    altura K (kH)      = 286px   (≈55.9% de 512)
+    ancho K (kW)       = 225px   (≈43.9% de 512)
+
+    Centro óptico:
+      ocX = 256  (centro horizontal exacto)
+      ocY = 257  (levemente bajo centro geométrico para equilibrio óptico)
+
+    Barra vertical:
+      centro en x = ocX - kW/2 + sw/2 = 256 - 112.5 + 30.2 = 173.7
+      top  = ocY - kH/2 = 257 - 143 = 114
+      bot  = ocY + kH/2 = 257 + 143 = 400
+
+    Bifurcación de brazos:
+      forkX = barX + sw*0.08 = 173.7 + 4.8 = 178.5
+      forkY = ocY - kH*0.04  = 257 - 11.4 = 245.6
+
+    Brazos:
+      armEndX = ocX + kW/2 - sw*0.1 = 256 + 112.5 - 6 = 362.5
+      armTopY = top  + sw*0.15 = 114 + 9.1 = 123.1
+      armBotY = bot  - sw*0.15 = 400 - 9.1 = 390.9
+  -->
+
+  <!-- Barra vertical -->
+  <line
+    x1="173.7" y1="114"
+    x2="173.7" y2="400"
+    stroke="white"
+    stroke-width="60.4"
+    stroke-linecap="round"
+  />
+
+  <!-- Brazo superior -->
+  <line
+    x1="178.5" y1="245.6"
+    x2="362.5" y2="123.1"
+    stroke="white"
+    stroke-width="60.4"
+    stroke-linecap="round"
+  />
+
+  <!-- Brazo inferior -->
+  <line
+    x1="178.5" y1="245.6"
+    x2="362.5" y2="390.9"
+    stroke="white"
+    stroke-width="60.4"
+    stroke-linecap="round"
+  />
+</svg>

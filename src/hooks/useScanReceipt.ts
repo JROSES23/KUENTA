@@ -60,7 +60,7 @@ async function callOpenRouter(base64: string, mimeType: string): Promise<string>
       'Authorization': `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: 'google/gemini-2.0-flash-exp:free',
+      model: 'google/gemini-2.0-flash',
       messages: [{
         role: 'user',
         content: [

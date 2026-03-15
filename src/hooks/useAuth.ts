@@ -1,17 +1,21 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../store/authStore'
 
 export function useAuth() {
   const { user, session, profile, isLoading, setUser, setSession, setProfile, setLoading, reset } =
     useAuthStore()
+  const initializedRef = useRef(false)
 
   useEffect(() => {
     let mounted = true
 
-    // Safety timeout: if everything hangs, force loading off after 5s
+    // Safety timeout: force loading off after 5s
     const safetyTimeout = setTimeout(() => {
-      if (mounted) setLoading(false)
+      if (mounted && !initializedRef.current) {
+        initializedRef.current = true
+        setLoading(false)
+      }
     }, 5000)
 
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -20,27 +24,45 @@ export function useAuth() {
       setSession(session)
       setUser(session?.user ?? null)
       if (session?.user) {
-        loadProfile(session.user.id)
+        loadProfile(session.user.id).then(() => {
+          if (mounted) {
+            initializedRef.current = true
+            setLoading(false)
+          }
+        })
       } else {
+        initializedRef.current = true
         setLoading(false)
       }
     }).catch(() => {
       if (mounted) {
         clearTimeout(safetyTimeout)
+        initializedRef.current = true
         setLoading(false)
       }
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
+      async (event, session) => {
         if (!mounted) return
+
+        // Skip INITIAL_SESSION — getSession() above already handles it
+        if (event === 'INITIAL_SESSION') return
+
+        // For TOKEN_REFRESHED, only update session/user — don't reload profile
+        if (event === 'TOKEN_REFRESHED') {
+          setSession(session)
+          setUser(session?.user ?? null)
+          return
+        }
+
+        // SIGNED_IN, SIGNED_OUT, USER_UPDATED, etc.
         setSession(session)
         setUser(session?.user ?? null)
         if (session?.user) {
           await loadProfile(session.user.id)
         } else {
           reset()
-          setLoading(false)
         }
       }
     )
@@ -53,7 +75,8 @@ export function useAuth() {
   }, [])
 
   async function loadProfile(userId: string) {
-    setLoading(true)
+    // NEVER set isLoading here — that's only for initial bootstrap
+    // Setting isLoading causes PrivateRoute to unmount everything
     try {
       const { data } = await supabase
         .from('users')
@@ -64,8 +87,6 @@ export function useAuth() {
     } catch {
       // Profile might not exist yet (new Google OAuth user)
       setProfile(null)
-    } finally {
-      setLoading(false)
     }
   }
 

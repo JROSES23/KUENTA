@@ -1,6 +1,4 @@
 import { useState } from 'react'
-import { supabase } from '../lib/supabase'
-import { usePlan } from './usePlan'
 
 export interface ScannedItem {
   name: string
@@ -10,7 +8,7 @@ export interface ScannedItem {
 }
 
 export interface ScanResult {
-  store: string
+  store: string | null
   date: string | null
   total: number
   items: ScannedItem[]
@@ -19,63 +17,108 @@ export interface ScanResult {
 export function useScanReceipt() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<Error | null>(null)
-  const { canScanReceipt } = usePlan()
 
-  function fileToBase64(file: File): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => {
-        const result = reader.result as string
-        // Strip the data:image/...;base64, prefix
-        resolve(result.split(',')[1])
-      }
-      reader.onerror = reject
-      reader.readAsDataURL(file)
-    })
-  }
-
-  async function scanReceipt(imageFile: File): Promise<ScanResult> {
-    if (!canScanReceipt(0)) {
-      throw new Error('Has alcanzado el limite de scans de tu plan. Actualiza a Premium.')
-    }
-
+  async function scanReceipt(file: File): Promise<ScanResult> {
     setIsLoading(true)
     setError(null)
 
     try {
-      const image = await fileToBase64(imageFile)
-      console.log('[scan] base64 length:', image.length, 'mimeType:', imageFile.type)
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY
+      if (!apiKey) throw new Error('VITE_GEMINI_API_KEY no configurada')
 
-      const { data, error: fnError } = await supabase.functions.invoke('scan-receipt', {
-        body: { image, mimeType: imageFile.type || 'image/jpeg' },
+      // Convert image to base64
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => {
+          const result = reader.result as string
+          resolve(result.split(',')[1])
+        }
+        reader.onerror = reject
+        reader.readAsDataURL(file)
       })
 
-      console.log('[scan] response data:', data, 'error:', fnError)
+      const prompt = `Eres un extractor de datos de boletas y tickets chilenos.
+Analiza esta imagen con mucho cuidado y extrae TODOS los productos comprados.
 
-      if (fnError) {
-        // FunctionsHttpError has the response in .context
-        let msg = fnError.message || 'Error desconocido'
-        try {
-          const ctx = (fnError as unknown as { context: { json: () => Promise<unknown> } }).context
-          if (ctx?.json) {
-            const body = await ctx.json()
-            console.error('[scan] error body from function:', body)
-            msg = (body as { error?: string })?.error || msg
-          }
-        } catch {
-          console.error('[scan] could not parse error body')
+Responde UNICAMENTE con JSON valido, sin texto adicional, sin markdown, sin bloques de codigo:
+{
+  "store": "nombre del local o null",
+  "date": "DD/MM/YYYY o null",
+  "total": 16910,
+  "items": [
+    {
+      "name": "nombre completo del producto",
+      "quantity": 1,
+      "unit_price": 2490,
+      "total_price": 2490
+    }
+  ]
+}
+
+Reglas estrictas:
+- Todos los montos deben ser numeros enteros en pesos chilenos (CLP)
+- Sin simbolos $ ni puntos de miles — solo el numero: 2490 no $2.490
+- Incluye ABSOLUTAMENTE TODOS los productos, sin omitir ninguno
+- Si hay descuentos, incluyelos como item con precio negativo
+- Si no puedes leer un valor con certeza usa null
+- quantity siempre debe ser un numero entero positivo
+- El total debe coincidir con la suma de todos los total_price`
+
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{
+              parts: [
+                { text: prompt },
+                {
+                  inline_data: {
+                    mime_type: file.type || 'image/jpeg',
+                    data: base64,
+                  },
+                },
+              ],
+            }],
+            generationConfig: {
+              temperature: 0.1,
+              maxOutputTokens: 4096,
+              responseMimeType: 'application/json',
+            },
+          }),
         }
-        console.error('[scan] function error:', msg)
-        throw new Error(msg)
+      )
+
+      if (!response.ok) {
+        const errData = await response.json()
+        throw new Error(errData.error?.message || `Gemini error ${response.status}`)
       }
 
-      if (!data || data.error) {
-        throw new Error(data?.error || 'Respuesta vacia de la funcion')
+      const geminiData = await response.json()
+      const text = geminiData.candidates?.[0]?.content?.parts?.[0]?.text
+      if (!text) throw new Error('Gemini no retorno respuesta')
+
+      // Clean in case markdown slips through
+      const clean = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
+      const parsed: ScanResult = JSON.parse(clean)
+
+      if (!parsed.items || parsed.items.length === 0) {
+        throw new Error('No se detectaron productos en la imagen')
       }
 
-      return data as ScanResult
+      // Ensure integers
+      parsed.items = parsed.items.map(item => ({
+        ...item,
+        quantity: Math.round(item.quantity) || 1,
+        unit_price: Math.round(item.unit_price) || 0,
+        total_price: Math.round(item.total_price) || 0,
+      }))
+      parsed.total = Math.round(parsed.total) || 0
+
+      return parsed
     } catch (err) {
-      const e = err as Error
+      const e = err instanceof Error ? err : new Error('Error al escanear')
       setError(e)
       throw e
     } finally {

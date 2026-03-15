@@ -15,10 +15,10 @@ export interface ScanResult {
 }
 
 // ── Provider config ──────────────────────────────────────────
-// MVP: swap provider here when ready for Gemini direct billing
+// MVP: change to 'gemini' when billing is active
 type Provider = 'openrouter' | 'gemini'
 
-const PROVIDER: Provider = import.meta.env.VITE_GEMINI_API_KEY ? 'gemini' : 'openrouter'
+const PROVIDER: Provider = 'openrouter'
 
 const RECEIPT_PROMPT = `Eres un extractor de datos de boletas y tickets chilenos.
 Analiza esta imagen con mucho cuidado y extrae TODOS los productos comprados.

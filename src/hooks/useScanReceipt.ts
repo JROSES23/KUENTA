@@ -53,9 +53,19 @@ export function useScanReceipt() {
       console.log('[scan] response data:', data, 'error:', fnError)
 
       if (fnError) {
-        // FunctionsHttpError has a context with the response
-        const msg = fnError.message || 'Error desconocido'
-        console.error('[scan] function error:', fnError)
+        // FunctionsHttpError has the response in .context
+        let msg = fnError.message || 'Error desconocido'
+        try {
+          const ctx = (fnError as unknown as { context: { json: () => Promise<unknown> } }).context
+          if (ctx?.json) {
+            const body = await ctx.json()
+            console.error('[scan] error body from function:', body)
+            msg = (body as { error?: string })?.error || msg
+          }
+        } catch {
+          console.error('[scan] could not parse error body')
+        }
+        console.error('[scan] function error:', msg)
         throw new Error(msg)
       }
 

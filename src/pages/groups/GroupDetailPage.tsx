@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ChevronLeft, DollarSign, Users, UserPlus, Phone } from 'lucide-react'
+import { ChevronLeft, DollarSign, Users, UserPlus, Phone, Trash2 } from 'lucide-react'
 import { AmbientBlobs } from '../../components/ui/AmbientBlobs'
 import { Spinner } from '../../components/ui/Spinner'
 import { Avatar } from '../../components/ui/Avatar'
@@ -16,7 +16,7 @@ import { ROUTES } from '../../constants/routes'
 export default function GroupDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { detail, isLoading, error, inviteMember } = useGroupDetail(id ?? '')
+  const { detail, isLoading, error, inviteMember, deleteGroup } = useGroupDetail(id ?? '')
   const [tab, setTab] = useState<'expenses' | 'balances'>('expenses')
 
   // Invite modal state
@@ -26,6 +26,24 @@ export default function GroupDetailPage() {
   const [inviteLoading, setInviteLoading] = useState(false)
   const [inviteError, setInviteError] = useState('')
   const [needsName, setNeedsName] = useState(false)
+
+  // Delete group state
+  const [showDelete, setShowDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
+
+  async function handleDelete() {
+    setDeleting(true)
+    setDeleteError('')
+    try {
+      await deleteGroup()
+      navigate(ROUTES.GROUPS, { replace: true })
+    } catch (err) {
+      setDeleteError((err as Error).message)
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   function resetInvite() {
     setShowInvite(false)
@@ -103,6 +121,12 @@ export default function GroupDetailPage() {
               className="w-9 h-9 rounded-full flex items-center justify-center bg-white/10 border border-white/15"
             >
               <UserPlus size={14} strokeWidth={2.5} className="text-white" />
+            </button>
+            <button
+              onClick={() => setShowDelete(true)}
+              className="w-9 h-9 rounded-full flex items-center justify-center bg-white/10 border border-white/15"
+            >
+              <Trash2 size={14} strokeWidth={2.5} className="text-white" />
             </button>
           </div>
 
@@ -287,6 +311,32 @@ export default function GroupDetailPage() {
             </div>
           </div>
         )}
+      </BottomSheet>
+
+      {/* Delete group confirmation */}
+      <BottomSheet isOpen={showDelete} onClose={() => { setShowDelete(false); setDeleteError('') }}>
+        <h3 className="font-ui text-h3 text-[var(--text)] mb-2">Eliminar grupo</h3>
+        <p className="font-ui text-body text-[var(--text-2)] mb-4">
+          Se eliminara <strong>{group.name}</strong> y todos sus miembros. Los gastos registrados no se borran. Esta accion no se puede deshacer.
+        </p>
+        {deleteError && (
+          <p className="font-ui text-body-sm text-[var(--red)] mb-3">{deleteError}</p>
+        )}
+        <div className="flex gap-3">
+          <Button
+            onClick={() => { setShowDelete(false); setDeleteError('') }}
+            className="!bg-[var(--surface)] !text-[var(--text)] !border !border-[var(--border)] flex-1"
+          >
+            Cancelar
+          </Button>
+          <Button
+            onClick={handleDelete}
+            disabled={deleting}
+            className="!bg-[var(--red)] flex-1"
+          >
+            {deleting ? <Spinner size={20} className="border-white/30 border-t-white" /> : 'Eliminar'}
+          </Button>
+        </div>
       </BottomSheet>
     </div>
   )

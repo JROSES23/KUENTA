@@ -80,6 +80,30 @@ export function useGroupDetail(groupId: string) {
     return () => { cancelled = true }
   }, [userId, groupId])
 
+  async function deleteGroup() {
+    if (!groupId || !userId) throw new Error('No hay grupo')
+
+    // Delete the group — CASCADE will remove members, but expenses stay orphaned
+    // RLS policy must allow creator to delete
+    const { error } = await supabase
+      .from('groups')
+      .delete()
+      .eq('id', groupId)
+
+    if (error) throw new Error(error.message)
+  }
+
+  async function closeGroup() {
+    if (!groupId) throw new Error('No hay grupo')
+
+    const { error } = await supabase
+      .from('groups')
+      .update({ is_active: false })
+      .eq('id', groupId)
+
+    if (error) throw new Error(error.message)
+  }
+
   async function inviteMember(phone: string, guestName?: string) {
     if (!groupId) throw new Error('No hay grupo')
 
@@ -117,5 +141,5 @@ export function useGroupDetail(groupId: string) {
     await loadDetail()
   }
 
-  return { detail, isLoading, error, refresh: loadDetail, inviteMember }
+  return { detail, isLoading, error, refresh: loadDetail, inviteMember, deleteGroup, closeGroup }
 }

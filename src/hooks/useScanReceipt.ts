@@ -44,12 +44,25 @@ export function useScanReceipt() {
 
     try {
       const image = await fileToBase64(imageFile)
+      console.log('[scan] base64 length:', image.length, 'mimeType:', imageFile.type)
 
-      const { data, error } = await supabase.functions.invoke('scan-receipt', {
+      const { data, error: fnError } = await supabase.functions.invoke('scan-receipt', {
         body: { image, mimeType: imageFile.type || 'image/jpeg' },
       })
 
-      if (error) throw new Error(error.message)
+      console.log('[scan] response data:', data, 'error:', fnError)
+
+      if (fnError) {
+        // FunctionsHttpError has a context with the response
+        const msg = fnError.message || 'Error desconocido'
+        console.error('[scan] function error:', fnError)
+        throw new Error(msg)
+      }
+
+      if (!data || data.error) {
+        throw new Error(data?.error || 'Respuesta vacia de la funcion')
+      }
+
       return data as ScanResult
     } catch (err) {
       const e = err as Error

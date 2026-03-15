@@ -32,9 +32,14 @@ Deno.serve(async (req) => {
     const { user } = await requireAuth(req)
     const serviceClient = getServiceClient()
 
-    const canScan = await checkScanLimit(user.id, serviceClient)
-    if (!canScan) {
-      return errorResponse('Limite de scans del plan gratuito alcanzado', 403)
+    // Plan check — non-blocking if plan_usage table doesn't exist yet
+    try {
+      const canScan = await checkScanLimit(user.id, serviceClient)
+      if (!canScan) {
+        return errorResponse('Limite de scans del plan gratuito alcanzado', 403)
+      }
+    } catch (e) {
+      console.warn('checkScanLimit failed (table may not exist):', (e as Error).message)
     }
 
     const formData = await req.formData()
@@ -129,7 +134,12 @@ Reglas:
       total_price: Math.round(item.total_price ?? 0),
     }))
 
-    await recordUsage(user.id, 'scan', serviceClient)
+    // Record usage — non-blocking if plan_usage table doesn't exist yet
+    try {
+      await recordUsage(user.id, 'scan', serviceClient)
+    } catch (e) {
+      console.warn('recordUsage failed (table may not exist):', (e as Error).message)
+    }
 
     return successResponse(result)
 

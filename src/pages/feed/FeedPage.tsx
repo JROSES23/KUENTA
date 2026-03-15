@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Activity, Bell, DollarSign, Camera, Users } from 'lucide-react'
+import { Activity, Bell, BellOff, DollarSign, Camera, Users } from 'lucide-react'
 import { Wordmark } from '../../components/ui/Wordmark'
 import { AmbientBlobs } from '../../components/ui/AmbientBlobs'
 import { TabBar } from '../../components/ui/TabBar'
@@ -19,6 +19,7 @@ export default function FeedPage() {
   const { events, isLoading: feedLoading } = useFeed()
   const { balance } = useDebts()
   const [showFab, setShowFab] = useState(false)
+  const [showNotif, setShowNotif] = useState(false)
 
   return (
     <div className="h-full flex flex-col bg-[var(--bg)] relative">
@@ -32,7 +33,10 @@ export default function FeedPage() {
           {/* Top row */}
           <div className="flex items-center justify-between mb-4">
             <Wordmark size="sm" className="text-[15px] tracking-[2px] !bg-none !text-white/80 ![filter:none]" />
-            <button className="w-9 h-9 rounded-full flex items-center justify-center bg-white/10 border border-white/15">
+            <button
+              onClick={() => setShowNotif(true)}
+              className="w-9 h-9 rounded-full flex items-center justify-center bg-white/10 border border-white/15"
+            >
               <Bell size={16} strokeWidth={2} className="text-white/70" />
             </button>
           </div>
@@ -136,6 +140,26 @@ export default function FeedPage() {
             </div>
           </button>
         </div>
+      </BottomSheet>
+
+      {/* Notifications Bottom Sheet */}
+      <BottomSheet isOpen={showNotif} onClose={() => setShowNotif(false)}>
+        <h3 className="font-ui text-h3 text-[var(--text)] mb-4">Notificaciones</h3>
+        {events.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-8 text-center">
+            <BellOff size={28} strokeWidth={1.5} className="text-[var(--text-3)] mb-3" />
+            <p className="font-ui text-body text-[var(--text-2)]">Nada aun</p>
+            <p className="font-ui text-body-sm text-[var(--text-3)] mt-1">
+              Aqui apareceran tus notificaciones
+            </p>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2 max-h-[50vh] overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
+            {events.slice(0, 10).map(event => (
+              <FeedCard key={event.id} event={event as never} />
+            ))}
+          </div>
+        )}
       </BottomSheet>
     </div>
   )

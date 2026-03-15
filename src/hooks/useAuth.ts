@@ -97,12 +97,13 @@ export function useAuth() {
   }
 
   async function signOut() {
+    // Clear local state first so UI redirects immediately
+    reset()
     try {
       await supabase.auth.signOut()
     } catch {
-      // Ignore signOut errors — clear local state anyway
+      // Ignore signOut errors — local state already cleared
     }
-    reset()
   }
 
   async function updateProfile(updates: Partial<{ display_name: string; avatar_url: string }>) {

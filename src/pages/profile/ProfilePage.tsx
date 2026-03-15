@@ -13,7 +13,11 @@ export default function ProfilePage() {
   const { theme, toggleTheme } = useThemeStore()
 
   async function handleSignOut() {
-    await signOut()
+    try {
+      await signOut()
+    } catch {
+      // Ignore errors — reset() already clears local state
+    }
     navigate('/login', { replace: true })
   }
 

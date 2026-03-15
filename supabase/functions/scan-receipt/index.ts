@@ -22,6 +22,13 @@ Deno.serve(async (req) => {
   if (corsResponse) return corsResponse
 
   try {
+    // 1. Validate API key exists
+    const apiKey = Deno.env.get('GEMINI_API_KEY')
+    if (!apiKey) {
+      console.error('GEMINI_API_KEY not set')
+      return errorResponse('Configuracion del servidor incompleta', 500)
+    }
+
     const { user } = await requireAuth(req)
     const serviceClient = getServiceClient()
 
@@ -35,7 +42,14 @@ Deno.serve(async (req) => {
     if (!imageFile) return errorResponse('No se recibio imagen')
 
     const arrayBuffer = await imageFile.arrayBuffer()
-    const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)))
+    const bytes = new Uint8Array(arrayBuffer)
+
+    // 2. Safe base64 encoding — btoa(String.fromCharCode(...spread)) crashes on large arrays
+    let binary = ''
+    for (let i = 0; i < bytes.length; i++) {
+      binary += String.fromCharCode(bytes[i])
+    }
+    const base64 = btoa(binary)
     const mimeType = imageFile.type || 'image/jpeg'
 
     // 30s timeout
@@ -45,7 +59,7 @@ Deno.serve(async (req) => {
     let geminiRes: Response
     try {
       geminiRes = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${Deno.env.get('GEMINI_API_KEY')}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -91,7 +105,7 @@ Reglas:
     if (!geminiRes.ok) {
       const errBody = await geminiRes.text().catch(() => '')
       console.error('Gemini error:', geminiRes.status, errBody)
-      return errorResponse('Error al procesar la imagen con IA', 502)
+      return errorResponse(`Error de IA (${geminiRes.status})`, 502)
     }
 
     const geminiData = await geminiRes.json()

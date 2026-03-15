@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Bell, DollarSign, Camera, Users } from 'lucide-react'
+import { Activity, Bell, DollarSign, Camera, Users } from 'lucide-react'
 import { Wordmark } from '../../components/ui/Wordmark'
 import { AmbientBlobs } from '../../components/ui/AmbientBlobs'
 import { TabBar } from '../../components/ui/TabBar'
@@ -79,10 +79,10 @@ export default function FeedPage() {
           </div>
         ) : events.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center">
-            <DollarSign size={32} strokeWidth={1.5} className="text-[var(--text-3)] mb-3" />
-            <p className="font-ui text-title text-[var(--text-2)] mb-1">Sin actividad aun</p>
+            <Activity size={32} strokeWidth={1.5} className="text-[var(--text-3)] mb-3" />
+            <p className="font-ui text-title text-[var(--text-2)] mb-1">Aun no hay movimientos</p>
             <p className="font-ui text-body-sm text-[var(--text-3)]">
-              Crea un grupo y agrega un gasto para comenzar
+              Crea un grupo para empezar
             </p>
           </div>
         ) : (

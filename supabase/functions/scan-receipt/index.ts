@@ -45,7 +45,7 @@ Deno.serve(async (req) => {
     let geminiRes: Response
     try {
       geminiRes = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${Deno.env.get('GEMINI_API_KEY')}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${Deno.env.get('GEMINI_API_KEY')}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -55,23 +55,20 @@ Deno.serve(async (req) => {
               parts: [
                 {
                   text: `Eres un extractor de datos de boletas chilenas.
-Analiza esta imagen y extrae TODOS los items comprados.
-
-Responde UNICAMENTE con JSON valido, sin texto adicional, sin markdown:
+Analiza esta imagen y extrae TODOS los items.
+Responde UNICAMENTE con JSON valido, sin texto adicional ni markdown:
 {
   "store": "nombre del local",
   "date": "DD/MM/YYYY",
-  "total": 12345,
+  "total": 16910,
   "items": [
-    { "name": "nombre del producto", "quantity": 1, "unit_price": 2490, "total_price": 2490 }
+    { "name": "nombre producto", "quantity": 1, "unit_price": 2490, "total_price": 2490 }
   ]
 }
-
 Reglas:
-- Montos siempre en numeros enteros CLP (sin puntos ni $)
-- Si no puedes leer un valor, usa null
-- Incluye TODOS los items, incluso los que repiten
-- El total debe coincidir con la suma de items`
+- Montos siempre integers CLP sin puntos ni $
+- Incluye TODOS los items
+- Si no lees un valor usa null`
                 },
                 {
                   inline_data: { mime_type: mimeType, data: base64 }

@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom'
-import { DollarSign } from 'lucide-react'
+import { CheckCircle } from 'lucide-react'
 import { AmbientBlobs } from '../../components/ui/AmbientBlobs'
 import { TabBar } from '../../components/ui/TabBar'
 import { Spinner } from '../../components/ui/Spinner'
@@ -68,10 +68,10 @@ export default function DebtsPage() {
           </div>
         ) : debts.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center">
-            <DollarSign size={32} strokeWidth={1.5} className="text-[var(--text-3)] mb-3" />
-            <p className="font-ui text-title text-[var(--text-2)] mb-1">Sin deudas</p>
+            <CheckCircle size={32} strokeWidth={1.5} className="text-[var(--text-3)] mb-3" />
+            <p className="font-ui text-title text-[var(--text-2)] mb-1">Todo al dia</p>
             <p className="font-ui text-body-sm text-[var(--text-3)]">
-              Estas al dia con todos
+              No tienes deudas pendientes
             </p>
           </div>
         ) : (

@@ -59,10 +59,13 @@ export default function GroupsPage() {
         ) : groups.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <Users size={32} strokeWidth={1.5} className="text-[var(--text-3)] mb-3" />
-            <p className="font-ui text-title text-[var(--text-2)] mb-1">Sin grupos aun</p>
-            <p className="font-ui text-body-sm text-[var(--text-3)]">
+            <p className="font-ui text-title text-[var(--text-2)] mb-1">No tienes grupos</p>
+            <p className="font-ui text-body-sm text-[var(--text-3)] mb-4">
               Crea un grupo para comenzar a dividir gastos
             </p>
+            <Button onClick={() => setShowCreate(true)} className="!w-auto px-6">
+              Crear primer grupo
+            </Button>
           </div>
         ) : (
           groups.map(group => (

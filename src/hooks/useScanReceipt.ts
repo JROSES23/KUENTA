@@ -14,30 +14,13 @@ export interface ScanResult {
   items: ScannedItem[]
 }
 
-export function useScanReceipt() {
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<Error | null>(null)
+// ── Provider config ──────────────────────────────────────────
+// MVP: swap provider here when ready for Gemini direct billing
+type Provider = 'openrouter' | 'gemini'
 
-  async function scanReceipt(file: File): Promise<ScanResult> {
-    setIsLoading(true)
-    setError(null)
+const PROVIDER: Provider = import.meta.env.VITE_GEMINI_API_KEY ? 'gemini' : 'openrouter'
 
-    try {
-      const apiKey = import.meta.env.VITE_GEMINI_API_KEY
-      if (!apiKey) throw new Error('VITE_GEMINI_API_KEY no configurada')
-
-      // Convert image to base64
-      const base64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader()
-        reader.onload = () => {
-          const result = reader.result as string
-          resolve(result.split(',')[1])
-        }
-        reader.onerror = reject
-        reader.readAsDataURL(file)
-      })
-
-      const prompt = `Eres un extractor de datos de boletas y tickets chilenos.
+const RECEIPT_PROMPT = `Eres un extractor de datos de boletas y tickets chilenos.
 Analiza esta imagen con mucho cuidado y extrae TODOS los productos comprados.
 
 Responde UNICAMENTE con JSON valido, sin texto adicional, sin markdown, sin bloques de codigo:
@@ -64,43 +47,111 @@ Reglas estrictas:
 - quantity siempre debe ser un numero entero positivo
 - El total debe coincidir con la suma de todos los total_price`
 
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{
-              parts: [
-                { text: prompt },
-                {
-                  inline_data: {
-                    mime_type: file.type || 'image/jpeg',
-                    data: base64,
-                  },
-                },
-              ],
-            }],
-            generationConfig: {
-              temperature: 0.1,
-              maxOutputTokens: 4096,
-              responseMimeType: 'application/json',
-            },
-          }),
+// ── API calls ────────────────────────────────────────────────
+
+async function callOpenRouter(base64: string, mimeType: string): Promise<string> {
+  const apiKey = import.meta.env.VITE_OPENROUTER_API_KEY
+  if (!apiKey) throw new Error('VITE_OPENROUTER_API_KEY no configurada')
+
+  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: 'google/gemini-2.0-flash-exp:free',
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'text', text: RECEIPT_PROMPT },
+          {
+            type: 'image_url',
+            image_url: { url: `data:${mimeType};base64,${base64}` },
+          },
+        ],
+      }],
+      temperature: 0.1,
+      max_tokens: 4096,
+    }),
+  })
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}))
+    throw new Error(err.error?.message || `OpenRouter error ${response.status}`)
+  }
+
+  const data = await response.json()
+  return data.choices?.[0]?.message?.content ?? ''
+}
+
+async function callGemini(base64: string, mimeType: string): Promise<string> {
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY
+  if (!apiKey) throw new Error('VITE_GEMINI_API_KEY no configurada')
+
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{
+          parts: [
+            { text: RECEIPT_PROMPT },
+            { inline_data: { mime_type: mimeType, data: base64 } },
+          ],
+        }],
+        generationConfig: {
+          temperature: 0.1,
+          maxOutputTokens: 4096,
+          responseMimeType: 'application/json',
+        },
+      }),
+    }
+  )
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}))
+    throw new Error(err.error?.message || `Gemini error ${response.status}`)
+  }
+
+  const data = await response.json()
+  return data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+}
+
+// ── Hook ─────────────────────────────────────────────────────
+
+export function useScanReceipt() {
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<Error | null>(null)
+
+  async function scanReceipt(file: File): Promise<ScanResult> {
+    setIsLoading(true)
+    setError(null)
+
+    try {
+      // Convert image to base64
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => {
+          const result = reader.result as string
+          resolve(result.split(',')[1])
         }
-      )
+        reader.onerror = reject
+        reader.readAsDataURL(file)
+      })
 
-      if (!response.ok) {
-        const errData = await response.json()
-        throw new Error(errData.error?.message || `Gemini error ${response.status}`)
-      }
+      const mimeType = file.type || 'image/jpeg'
 
-      const geminiData = await response.json()
-      const text = geminiData.candidates?.[0]?.content?.parts?.[0]?.text
-      if (!text) throw new Error('Gemini no retorno respuesta')
+      // Call the active provider
+      const rawText = PROVIDER === 'gemini'
+        ? await callGemini(base64, mimeType)
+        : await callOpenRouter(base64, mimeType)
 
-      // Clean in case markdown slips through
-      const clean = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
+      if (!rawText) throw new Error('No se recibio respuesta del modelo')
+
+      // Clean markdown if present
+      const clean = rawText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
       const parsed: ScanResult = JSON.parse(clean)
 
       if (!parsed.items || parsed.items.length === 0) {

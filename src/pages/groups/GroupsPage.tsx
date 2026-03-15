@@ -88,7 +88,7 @@ export default function GroupsPage() {
       <TabBar onFabPress={() => setShowCreate(true)} />
 
       {/* Create group sheet */}
-      <BottomSheet isOpen={showCreate} onClose={() => setShowCreate(false)}>
+      <BottomSheet isOpen={showCreate} onClose={() => { setShowCreate(false); setCreating(false); setCreateError('') }}>
         <h3 className="font-ui text-h3 text-[var(--text)] mb-4">Crear grupo</h3>
         <Input
           placeholder="Nombre del grupo"

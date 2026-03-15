@@ -26,9 +26,8 @@ export function BottomSheet({ isOpen, onClose, children, className }: BottomShee
     <div
       ref={overlayRef}
       className="fixed inset-0 z-50 flex items-end justify-center"
-      onClick={(e) => { if (e.target === overlayRef.current) onClose() }}
     >
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
       <div
         className={cn(
           'relative z-10 w-full max-w-[500px]',

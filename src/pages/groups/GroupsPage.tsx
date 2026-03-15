@@ -18,16 +18,21 @@ export default function GroupsPage() {
   const [createError, setCreateError] = useState('')
 
   async function handleCreate() {
+    console.log('handleCreate called, name:', newName.trim())
     if (!newName.trim()) return
     setCreating(true)
     setCreateError('')
     try {
+      console.log('Calling createGroup...')
       await createGroup(newName.trim(), '')
+      console.log('createGroup returned OK')
       setShowCreate(false)
       setNewName('')
     } catch (err) {
+      console.error('handleCreate ERROR:', err)
       setCreateError((err as Error).message)
     } finally {
+      console.log('handleCreate finally — setCreating(false)')
       setCreating(false)
     }
   }

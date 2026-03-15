@@ -40,25 +40,32 @@ export function useGroups() {
   }
 
   async function createGroup(name: string, emoji: string, description?: string) {
+    console.log('1. createGroup called, user:', user?.id)
     if (!user) throw new Error('No autenticado')
+
+    console.log('2. Inserting into groups...')
     const { data, error: err } = await supabase
       .from('groups')
       .insert({ name, emoji, description: description ?? null, created_by: user.id })
       .select()
       .single()
 
+    console.log('3. groups result:', data, err)
     if (err) throw new Error(err.message)
 
+    console.log('4. Inserting into group_members...')
     const { error: memberErr } = await supabase
       .from('group_members')
       .insert({ group_id: data.id, user_id: user.id, role: 'admin' })
 
+    console.log('5. group_members result:', memberErr)
     if (memberErr) {
       // Rollback: delete orphaned group
       await supabase.from('groups').delete().eq('id', data.id)
       throw new Error('Error al crear grupo: ' + memberErr.message)
     }
 
+    console.log('6. Success, updating local state')
     setGroups(prev => [data, ...prev])
     return data
   }

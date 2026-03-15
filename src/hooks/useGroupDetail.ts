@@ -80,20 +80,42 @@ export function useGroupDetail(groupId: string) {
     return () => { cancelled = true }
   }, [userId, groupId])
 
-  async function addMember(memberUserId?: string, phoneGuest?: string, guestName?: string) {
-    if (!groupId) return
-    const { error: err } = await supabase
-      .from('group_members')
-      .insert({
-        group_id: groupId,
-        user_id: memberUserId ?? null,
-        phone_guest: phoneGuest ?? null,
-        guest_name: guestName ?? null,
-      })
+  async function inviteMember(phone: string, guestName?: string) {
+    if (!groupId) throw new Error('No hay grupo')
 
-    if (err) throw new Error(err.message)
+    // Buscar si existe usuario con ese teléfono
+    const { data: existingUser } = await supabase
+      .from('users')
+      .select('id')
+      .eq('phone', phone)
+      .single()
+
+    if (existingUser) {
+      // Usuario registrado — agregar directo
+      const { error } = await supabase
+        .from('group_members')
+        .insert({
+          group_id: groupId,
+          user_id: existingUser.id,
+          role: 'member',
+        })
+      if (error) throw new Error(error.message)
+    } else {
+      // Guest — agregar con teléfono y nombre
+      if (!guestName) throw new Error('Nombre requerido para invitado')
+      const { error } = await supabase
+        .from('group_members')
+        .insert({
+          group_id: groupId,
+          phone_guest: phone,
+          guest_name: guestName,
+          role: 'member',
+        })
+      if (error) throw new Error(error.message)
+    }
+
     await loadDetail()
   }
 
-  return { detail, isLoading, error, refresh: loadDetail, addMember }
+  return { detail, isLoading, error, refresh: loadDetail, inviteMember }
 }

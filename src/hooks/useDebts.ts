@@ -15,54 +15,108 @@ export function useDebts() {
     setIsLoading(true)
 
     try {
-      const { data: balanceData, error: balanceError } = await supabase
-        .rpc('get_user_balance', { p_user_id: userId })
-        .single()
+      // Balance via RPC — non-blocking if function doesn't exist
+      try {
+        const { data: balanceData, error: balanceError } = await supabase
+          .rpc('get_user_balance', { p_user_id: userId })
+          .single()
 
-      if (balanceError) throw new Error(balanceError.message)
-      setBalance(balanceData as unknown as UserBalance)
+        if (!balanceError) setBalance(balanceData as unknown as UserBalance)
+      } catch {
+        // RPC may not exist yet
+      }
 
-      const { data: splits, error: splitsError } = await supabase
+      // Query 1: What I owe others (splits where I'm the debtor)
+      const { data: iOwe, error: iOweErr } = await supabase
         .from('expense_splits')
         .select(`
           amount_owed,
-          is_paid,
-          user_id,
-          expenses!inner(
+          expense_id,
+          expenses!inner (
             paid_by,
             title,
-            group_id,
-            paid_by_user:paid_by(id, display_name, avatar_url)
+            group_id
           )
         `)
+        .eq('user_id', userId)
         .eq('is_paid', false)
-        .or(`user_id.eq.${userId},expenses.paid_by.eq.${userId}`)
 
-      if (splitsError) throw new Error(splitsError.message)
+      if (iOweErr) throw new Error(iOweErr.message)
 
+      // Query 2: What others owe me (splits on expenses I paid)
+      const { data: owedToMe, error: owedErr } = await supabase
+        .from('expense_splits')
+        .select(`
+          amount_owed,
+          user_id,
+          expense_id,
+          expenses!inner (
+            paid_by,
+            title,
+            group_id
+          )
+        `)
+        .eq('expenses.paid_by', userId)
+        .eq('is_paid', false)
+        .neq('user_id', userId)
+
+      if (owedErr) throw new Error(owedErr.message)
+
+      // Build debt map
       const debtMap = new Map<string, DebtSummary>()
 
-      for (const split of (splits ?? [])) {
+      // I owe these people
+      for (const split of (iOwe ?? [])) {
         const expense = split.expenses as Record<string, unknown>
-        const isPayer: boolean = expense.paid_by === userId
-        const counterpartId: string = isPayer ? split.user_id : expense.paid_by as string
-        const counterpartUser = isPayer
-          ? null
-          : expense.paid_by_user as { display_name: string; avatar_url: string | null } | null
+        const payerId = expense.paid_by as string
+        if (!payerId || payerId === userId) continue
 
-        if (!counterpartId || counterpartId === userId) continue
-
-        const existing = debtMap.get(counterpartId) ?? {
-          with_user_id: counterpartId,
-          with_user_name: counterpartUser?.display_name ?? 'Usuario',
-          with_user_avatar: counterpartUser?.avatar_url ?? null,
+        const existing = debtMap.get(payerId) ?? {
+          with_user_id: payerId,
+          with_user_name: 'Usuario',
+          with_user_avatar: null,
           net_amount: 0,
           expense_count: 0,
         }
 
-        existing.net_amount += isPayer ? split.amount_owed : -split.amount_owed
+        existing.net_amount -= split.amount_owed
         existing.expense_count += 1
-        debtMap.set(counterpartId, existing)
+        debtMap.set(payerId, existing)
+      }
+
+      // These people owe me
+      for (const split of (owedToMe ?? [])) {
+        const debtorId = split.user_id
+        if (!debtorId || debtorId === userId) continue
+
+        const existing = debtMap.get(debtorId) ?? {
+          with_user_id: debtorId,
+          with_user_name: 'Usuario',
+          with_user_avatar: null,
+          net_amount: 0,
+          expense_count: 0,
+        }
+
+        existing.net_amount += split.amount_owed
+        existing.expense_count += 1
+        debtMap.set(debtorId, existing)
+      }
+
+      // Fetch display names for all counterparts
+      const counterpartIds = Array.from(debtMap.keys())
+      if (counterpartIds.length > 0) {
+        const { data: users } = await supabase
+          .from('users')
+          .select('id, display_name, avatar_url')
+          .in('id', counterpartIds)
+
+        for (const u of (users ?? [])) {
+          const debt = debtMap.get(u.id)
+          if (debt) {
+            debt.with_user_name = u.display_name || 'Usuario'
+            debt.with_user_avatar = u.avatar_url
+          }
+        }
       }
 
       setDebts(Array.from(debtMap.values()).sort((a, b) => Math.abs(b.net_amount) - Math.abs(a.net_amount)))
@@ -81,75 +135,8 @@ export function useDebts() {
       return
     }
 
-    let cancelled = false
-    setIsLoading(true)
-
-    // Use the same logic but with cancellation
-    Promise.resolve().then(async () => {
-      try {
-        const { data: balanceData, error: balanceError } = await supabase
-          .rpc('get_user_balance', { p_user_id: userId })
-          .single()
-
-        if (cancelled) return
-        if (balanceError) throw new Error(balanceError.message)
-        setBalance(balanceData as unknown as UserBalance)
-
-        const { data: splits, error: splitsError } = await supabase
-          .from('expense_splits')
-          .select(`
-            amount_owed,
-            is_paid,
-            user_id,
-            expenses!inner(
-              paid_by,
-              title,
-              group_id,
-              paid_by_user:paid_by(id, display_name, avatar_url)
-            )
-          `)
-          .eq('is_paid', false)
-          .or(`user_id.eq.${userId},expenses.paid_by.eq.${userId}`)
-
-        if (cancelled) return
-        if (splitsError) throw new Error(splitsError.message)
-
-        const debtMap = new Map<string, DebtSummary>()
-
-        for (const split of (splits ?? [])) {
-          const expense = split.expenses as Record<string, unknown>
-          const payer: boolean = expense.paid_by === userId
-          const cId: string = payer ? split.user_id : expense.paid_by as string
-          const counterpartUser = payer
-            ? null
-            : expense.paid_by_user as { display_name: string; avatar_url: string | null } | null
-
-          if (!cId || cId === userId) continue
-
-          const existing = debtMap.get(cId) ?? {
-            with_user_id: cId,
-            with_user_name: counterpartUser?.display_name ?? 'Usuario',
-            with_user_avatar: counterpartUser?.avatar_url ?? null,
-            net_amount: 0,
-            expense_count: 0,
-          }
-
-          existing.net_amount += payer ? split.amount_owed : -split.amount_owed
-          existing.expense_count += 1
-          debtMap.set(cId, existing)
-        }
-
-        if (cancelled) return
-        setDebts(Array.from(debtMap.values()).sort((a, b) => Math.abs(b.net_amount) - Math.abs(a.net_amount)))
-      } catch (err) {
-        if (!cancelled) setError(err as Error)
-      } finally {
-        if (!cancelled) setIsLoading(false)
-      }
-    })
-
-    return () => { cancelled = true }
-  }, [userId])
+    loadDebts()
+  }, [userId, loadDebts])
 
   return { debts, balance, isLoading, error, refresh: loadDebts }
 }

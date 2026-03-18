@@ -18,7 +18,7 @@ export interface ScanResult {
 // MVP: change to 'gemini' when billing is active
 type Provider = 'openrouter' | 'gemini'
 
-const PROVIDER: Provider = 'openrouter'
+const PROVIDER: Provider = 'gemini'
 
 const RECEIPT_PROMPT = `Eres un extractor de datos de boletas y tickets chilenos.
 Analiza esta imagen con mucho cuidado y extrae TODOS los productos comprados.
